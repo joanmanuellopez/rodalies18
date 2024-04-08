@@ -1,0 +1,396 @@
+---
+title: "Evolución diaria de pasajeros en la red de Rodalies de Barcelona el año 2018"
+#author: "Joan Manuel Lopez Ruiz"
+#date: '`r Sys.Date()`'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r load_libraries, include=FALSE}
+library(knitr)
+library(dplyr)
+library(tidyr)
+library(lubridate)
+library(ggplot2)
+library(stringr)
+```
+
+## 1. Introducción
+
+A partir de los datos abiertos publicados en el portal del operador ferroviario de la red de Rodalies de Barcelona, correspondiente al número medio diario de pasajeros subidos y bajados en cada estación en tramos horarios de 30 minutos el año 2018, se quiere ver en qué estaciones hay mayor flujo diario de pasajeros así como la evolución de este flujo en la red para determinar las horas de mayor afluencia de pasajeros en la red. Finalmente se va a desarrollar un método para detectar aquellas estaciones de la red que presenten una clara tendencia de *commuting*, tanto residencial como laboral.
+
+Se opta por visualizar la información georeferenciada en la herramienta flourish, para aprovechar su versatilidad y su claridad a la hora de presentar este tipo de información. 
+
+### 1.1 Fuente de datos
+Los datos se han obtenido del Portal de datos abiertos de renfe (https://data.renfe.com/dataset/volumen-de-viajeros-por-franja-horaria-barcelona) y corresponden al año 2018 que es último año publicado en el momento de llevar a cabo este proyecto.
+
+### 1.2 Limitaciones de los datos
+El fichero facilitado en el portal de datos abieros muestra la media anual agregada de pasajeros subidos y de pasajeros bajados, en cada estación de la red de cercanías, por tramos temporales de 30 minutos. Este formato de distribución de la información limita mucho la capacidad de análisis de los datos, ya que no se dispone de la granularidad necesaria que permita diferenciar los flujos de viajeros los días laborables de los festivos y fines de semana, ni tampoco que permita evaluar posibles diferencias en función de las distintas épocas del año como, por ejemplo, los periodos lectivos o los meses de verano.
+
+A pesar de estas limitaciones se decide seguir adelante con el análisis, teniendo en cuenta que la calidad de los resultados se verá afectada por ellas.  
+
+## 2. Análisis
+
+### 2.1 Lectura de los datos y primeras verificaciones y modificaciones en el dataset
+
+Tras leer el contenido del fichero csv descargado del portal y crear un dataframe con los datos se llevan a cabo las siguientes acciones previas al análisis:  
+
+- Búsqueda de valores nulos (NAs) en el dataset  
+  - Se verifica que no hay ningún valor nulo  
+- Conversión a factor de los atributos con el código y el nombre de cada estación  
+- Verificación de que el atributo *NUCLEO_CERCANIAS* solo tiene un valor  
+  - Eliminación de este atributo por no aportar información útil para el análisis  
+- Creación del atributo *VIAJEROS_TOTAL* con la suma de viajeros subidos y bajados en cada estación en un tramo horario  
+- Adecuación del atributo *TRAMO_HORARIO* para que refleje únicamente la hora de inicio del tramo  
+
+```{r message=FALSE, warning=FALSE}
+
+# Lectura del fichero
+pass_df <- read.csv("data/barcelona_viajeros_por_franja_csv.csv", sep = ";", na.strings = "NA")
+
+# Verificaación de la carga mediante la visualización de las seis primeras filas
+head(pass_df)
+
+# Verificación de los tipos de datos coercionados por R mediante la función summary
+summary(pass_df)
+
+# Verificación de la existencia de valores nulos ==> no hay NAs en el dataset
+length(which(is.na(pass_df)))
+
+# Transformación de los tipos de variable y selección de atributos (feature engineering)
+levels(as.factor(pass_df$NUCLEO_CERCANIAS))
+
+# Se elimina el atributo NUCLEO_CERCANIAS porque solo tiene un valor
+pass_df <- select(pass_df,-c("NUCLEO_CERCANIAS"))
+
+# Transformación de las columnas CODIGO_ESTACION y NOMBRE_ESTACION a factor
+pass_df$CODIGO_ESTACION <- as.factor(pass_df$CODIGO_ESTACION)
+pass_df$NOMBRE_ESTACION <- as.factor(pass_df$NOMBRE_ESTACION)
+
+# Se obtiene número total de estaciones contando el número de niveles de los factores
+nlevels(pass_df$CODIGO_ESTACION)
+nlevels(pass_df$NOMBRE_ESTACION)
+
+# Consistencia de la medida de subidos y bajados ==> Resultado == 0 --> Consistente!!
+sum(pass_df$VIAJEROS_SUBIDOS) - sum(pass_df$VIAJEROS_BAJADOS)
+
+# Creación de un atributo VIAJEROS_TOTAL con el total de viajeros
+pass_df$VIAJEROS_TOTAL <- pass_df$VIAJEROS_SUBIDOS + pass_df$VIAJEROS_BAJADOS
+
+# Adecuación del atributo TRAMO_HORARIO para que refleje la hora de inicio del tramo
+#pass_df$TRAMO_HORARIO <- as.POSIXct(substr(pass_df$TRAMO_HORARIO,1,5),format="%H:%M")
+pass_df$TRAMO_HORARIO <- substr(pass_df$TRAMO_HORARIO,1,5)
+
+pass_df$TRAMO_HORARIO <- as.POSIXct(pass_df$TRAMO_HORARIO, format="%H:%M")
+pass_df$HORA <- hour(pass_df$TRAMO_HORARIO)
+
+# Validación de las transformaciones
+head(pass_df)
+summary(pass_df)
+ 
+```
+
+### 2.2 Análisis exploratorio
+
+**DISTRIBUCIÓN DE VIAJEROS SUBIDOS Y VIAJEROS BAJADOS**  
+En primer lugar se comprueban las distribuciones de los pasajeros subidos y de los pasajeros bajados. Se ha optado por representarlas en escala logarítmica para facilitar la visualización gráfica de las distribuciones.
+
+```{r message=FALSE, warning=FALSE}
+
+# Distribuciones de las variables VIAJEROS_SUBIDOS y VIAJEROS_BAJADOS
+# (Histograma + boxplot)
+
+# Histograma VIAJEROS_SUBIDOS
+ggplot(data = pass_df, aes(x = log10(VIAJEROS_SUBIDOS))) +
+  geom_histogram(binwidth = 0.1, fill="#66b3cc", color="#205060", alpha=0.8) +
+  #geom_vline(xintercept = log10(top_cut), linetype="dashed", color = "#bb0000", size = 0.5) +
+  #geom_text(label="Outliers\nthreshold", x=4.1, y=8500, color = "#bb0000",
+  #          aes(family="arial", size=11)) +
+  labs(title = "VIAJEROS SUBIDOS",
+       subtitle = "Distribución") +
+  xlab("Número de viajeros (log)") + ylab(NULL) +
+  theme(legend.position = "none", panel.background = element_blank(), panel.border = element_blank(),
+        plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(color = "#404040", hjust = 0.5),
+        axis.line.x = element_line(colour = "black", linewidth = 0.5, linetype = "solid"),
+        axis.text.y = element_blank(), axis.ticks.y = element_blank())
+
+# Histograma VIAJEROS_BAJADOS
+ggplot(data = pass_df, aes(x = log10(VIAJEROS_BAJADOS))) +
+  geom_histogram(binwidth = 0.1, fill="#66b3cc", color="#205060", alpha=0.8) +
+  #geom_vline(xintercept = log10(top_cut), linetype="dashed", color = "#bb0000", size = 0.5) +
+  #geom_text(label="Outliers\nthreshold", x=4.1, y=8500, color = "#bb0000",
+  #          aes(family="arial", size=11)) +
+  labs(title = "VIAJEROS BAJADOS",
+       subtitle = "Distribución") +
+  xlab("Número de viajeros (log)") + ylab(NULL) +
+  theme(legend.position = "none", panel.background = element_blank(), panel.border = element_blank(),
+        plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(color = "#404040", hjust = 0.5),
+        axis.line.x = element_line(colour = "black", linewidth = 0.5, linetype = "solid"),
+        axis.text.y = element_blank(), axis.ticks.y = element_blank())
+
+
+```
+
+**EVOLUCION DIARIA POR HORAS DE ACCESO DE PASAJEROS A LA RED DE CERCANIAS**  
+El siguiente paso en el análisis exploratorio es observar la evolución a lo largo del día de los pasajeros que acceden a la red, globalmente, sin diferenciar estaciones. A partir de la gráfica obtenida se quiere determinar cuáles son las franjas horarias de mayor afluencia de viajeros.
+
+```{r message=FALSE, warning=FALSE}
+
+## EVOLUCION DIARIA POR HORAS DE ACCESO DE PASAJEROS A LA RED DE CERCANIAS
+pass_total_hora <- pass_df %>% group_by(HORA) %>% summarise(TOTAL = sum(VIAJEROS_SUBIDOS))
+
+pass_total_hora$HORA_DT <- as.POSIXct(as.character(pass_total_hora$HORA),format="%H")
+
+# Plot 1: Evolucion de viajeros por hora
+ggplot(pass_total_hora, aes(x=HORA_DT, y=TOTAL)) + geom_line(stat="identity", colour="#8a1708") +
+  labs(title = "Pasajeros subidos a la red de Cercanías de Barcelona",
+       subtitle = "Evolución horaria en el global de todas las estaciones, año 2018",
+       x = NULL, y = NULL) +
+  theme(axis.line = element_line(linewidth = 0.5, colour = "black", linetype = 1),
+        plot.background = element_blank(), panel.background = element_blank()) +
+  scale_x_datetime(date_labels = "%H:%M", date_breaks='4 hours') +
+  geom_vline(xintercept = as.POSIXct("7",format="%H"),
+             linetype = "dashed",
+             color = "#8c7373",
+             linewidth = 0.25) +
+  geom_vline(xintercept = as.POSIXct("8",format="%H"),
+             linetype = "dashed",
+             color = "#8c7373",
+             linewidth = 0.25) +
+  geom_vline(xintercept = as.POSIXct("17",format="%H"),
+             linetype = "dashed",
+             color = "#8c7373",
+             linewidth = 0.25) +
+  geom_vline(xintercept = as.POSIXct("19",format="%H"),
+             linetype = "dashed",
+             color = "#8c7373",
+             linewidth = 0.25)
+
+# Escritura del csv para exportar los datos a Flourish
+write.csv(pass_total_hora[,c(1,2)],"clean_data/pass_in_hora.csv", row.names = FALSE)
+
+```
+
+En la gráfica se aprecian tres picos en el flujo de viajeros que acceden a la red.  
+
+- Un primer pico por la mañana a las 7h y las 8h que correspondería a la hora punta de entrada a los lugares de trabajo y centros docentes.  
+- Un segundo pico hacia las 14h que se atribuye al flujo de mediodía en jornadas laborales intensivas, o desplazamientos de festivos y fines de semana.  
+- Un tercer pico entre 17h y 19h que correspondería a la hora punta de la tarde, debida a la salida de los lugares de trabajo y desplazamientos a casa o bien a otras actividades como por ejemplo gimnasio o compras. Es un horario que en fines de semana y festivos correspondería a actividades de ocio.  
+
+En este caso la falta de granularidad en los datos hace difícil establecer con certeza los picos de flujo en los días laborables o las diferencias en la evolución diaria del flujo entre días laborables, festivos y fines de semana.  
+
+**ESTACIONES DE LA RED CON MAYOR FLUJO (ACCESO Y SALIDA) DE VIAJEROS DIARIOS**  
+El siguiente paso del análisis exploratorio es determinar cuáles son las estaciones de la red de Rodalies de Barcelona con mayor flujo medio diario de pasajeros en el año 2018, considerando tanto los pasajeros subidos como los bajados.
+
+```{r message=FALSE, warning=FALSE}
+
+## ESTACIONES CON MAYOR FLUJO (ACCESO Y SALIDA) DE PASAJEROS DE LA RED
+# Estaciones con mayor flujo total de viajeros
+pass_total_est <- pass_df %>% group_by(CODIGO_ESTACION, NOMBRE_ESTACION) %>% 
+  summarise(TOTAL = sum(VIAJEROS_TOTAL))
+
+# Plot 2: Estaciones con mayor flujo diario de viajeros (top-25)
+pass_total_top <- arrange(pass_total_est, desc(TOTAL))[c(1:25),]
+
+codest_top <- pass_total_top$CODIGO_ESTACION
+estacions <- rev(pass_total_top$NOMBRE_ESTACION)
+#estacions <- sort(pass_total_top30$NOMBRE_ESTACION, decreasing = TRUE)
+
+ggplot(pass_total_top, aes(TOTAL, NOMBRE_ESTACION)) + geom_col(fill = "#8a1708", width = 0.6) +
+  labs(title = "Estaciones con mayor flujo de viajeros en la red de Cercanías de Barcelona",
+       subtitle = "Media diaria de viajeros (subidos y bajados) en el año 2018",
+       x = NULL, y = NULL) +
+  theme(axis.line = element_blank(), axis.ticks.y = element_blank(),
+        plot.background = element_blank(), panel.background = element_blank(),
+        plot.title=element_text(hjust=1.25)) +
+  scale_x_continuous(limits = c(0,100000)) +
+  scale_y_discrete(limits = estacions) 
+
+```
+
+Las estaciones con mayor flujo de viajeros son las ubicadas en la ciudad de Barcelona, de hecho de las siete estaciones de Rodalies que hay en la ciudad, seis ocupan la primeras posiciones en cuanto a volumen de pasajeros. Destacan entre todas Barcelona-Sants, en la que confluye todo el tránsito de trenes de la red de Rodalies, que es con diferencia la que mayor número de pasajeros tiene y la de Plaça Catalunya, en el centro de la ciudad, y en la confluyen tres de las líneas de Rodalies.  
+
+Fuera de Barcelona destacan por volumen las estaciones de Mataró, l'Hospitalet de Llobregat y Vilanova i la Geltrú. En los casos de Mataró y Vilanova convendría conocer si existen alternativas de transporte entre estas localidades y Barcelona y otras poblaciones cercanas, para ver si el tren es la opción mayoritaria.  
+
+Podría sorprender no encontrar en posiciones más altas de la lista algunas de las poblaciones con más habitantes de Barcelona, como serían Badalona, Terrassa y Sabadell. En el caso de Badalona se dispone de la alternativa del metro para llegar a Barcelona. En el caso de Terrassa y Sabadell disponen de más de una estación de Rodalies (dos y tres, respectivamente) lo que hace disminuir el cómputo del flujo y a ambas ciudades llega la red de Ferrocarrils de la Generalitat (FGC) que supone una alternativa para el acceso a Barcelona.
+
+A continuación se exporta la información obtenida en un fichero csv para poder representarla en la herramienta de visualización flourish. Además, lectura de info geográfica para exportar la info georreferenciada a flourish
+
+```{r message=FALSE, warning=FALSE}
+
+# Escritura del csv para exportar los datos a Flourish, y pintar mapa
+write.csv(pass_total_hora[,c(1,2)],"clean_data/pass_in_hora.csv", row.names = FALSE)
+
+# Lectura de la informacion geografica de las estaciones 
+ests_rod_df <- read.csv("data/listado-estaciones-rodalies-barcelona.csv", sep = ";", na.strings = "NA")
+
+ests_rod_df <- ests_rod_df[,c(1,3,4)]
+ests_rod_df$CÓDIGO <- as.factor(ests_rod_df$CÓDIGO)
+
+pass_total_top <- pass_total_top %>% left_join(ests_rod_df, by=c('CODIGO_ESTACION'='CÓDIGO'))
+
+# Escritura del csv para exportar los datos a Flourish, y pintar el mapa
+write.csv(pass_total_top,"clean_data/top_ests_pass.csv", row.names = FALSE)
+
+write.csv(ests_rod_df,"clean_data/estaciones_geo.csv", row.names = FALSE)
+
+```
+
+### 2.3 Detección y análisis de los flujos de *commuting*
+
+En el último paso del análisis se pretende establecer una metodología que permita detectar aquellas estaciones de la red de Rodalies que presenten una clara tendencia de *commuting*, tanto residencial como laboral. La idea es poder disponer de una metodología genérica que sirva como referencia para la detección de los flujos de *commuting* en varias situaciones.  
+
+Se podría definir de manera sencilla el *commuting* como aquellos desplazamientos habituales entre el lugar de residencia y el lugar de trabajo o estudio. Se podría acotar esta definición y distinguir entre *commuting residencial* y *commuting laboral* en función de en qué momento del día se dieran el pico de acceso a la red y el pico de salida. Por ejemplo, un comportamiento típico en una estación ubicada en un distrito mayoritariamente de oficinas sería tener un pico acusado de bajada de viajeros por la mañana y un pico acusado de acceso por la tarde, claro indicador de *commuting laboral*.
+
+#### 2.3.1 Definición del método  
+El método propuesto para detectar comportamiento de *commuting* en las estaciones de Rodalies, y que se pretende extrapolar a otros casos, consta de los siguientes pasos:  
+
+- Establecer las horas de máxima afluencia (horas punta) por la mañana y por la tarde.  
+- Determinar el rango de porcentaje de viajeros subidos/bajados en cada uno de los periodos de hora punta para considerar *commuting*. En este caso se establece un umbral del **60%** de viajeros subidos o bajados para poder considerar el flujo como indicador de tendencia de *commuting*.  
+- Detectar comportamientos inversos en los periodos de horas punta de la mañana y de la tarde.  
+- Aplicar el umbral de porcentaje de *commuting* determinado en el segundo paso.  
+
+En el caso de este análisis se consideran:  
+
+- Hora punta de mañana el periodo entre 7h y 8h y hora punta de la tarde el periodo entre 17h y 19h.  
+- Umbral de *commuting* a partir del 60% de viajeros subidos o bajados.  
+
+
+#### 2.3.2 Desarrollo del método
+
+``` {r message=FALSE, warning=FALSE}
+
+## DETECCION DEL FLUJO DE COMMUTING
+pass_total_comm <- pass_df[pass_df$HORA %in% c(7,8,17,18,19),]
+
+pass_total_comm$RUSH <- 'Morning'
+pass_total_comm$RUSH[pass_total_comm$HORA %in% c(17,18,19)] <- 'Afternoon'
+
+pass_total_comm <- pass_total_comm %>% group_by(CODIGO_ESTACION, NOMBRE_ESTACION, RUSH) %>%
+  summarise(TOTAL_SUBIDOS = sum(VIAJEROS_SUBIDOS), 
+            TOTAL_BAJADOS = sum(VIAJEROS_BAJADOS), 
+            TOTAL_VIAJEROS = sum(VIAJEROS_TOTAL))
+
+pass_total_comm$PERC_SUBIDOS = pass_total_comm$TOTAL_SUBIDOS / pass_total_comm$TOTAL_VIAJEROS
+
+pass_total_comm <- pass_total_comm %>% 
+  select("CODIGO_ESTACION","NOMBRE_ESTACION","RUSH","PERC_SUBIDOS") %>% 
+  pivot_wider(names_from = RUSH, values_from = PERC_SUBIDOS)
+
+pass_total_comm$IS_COMM <- sign((pass_total_comm$Morning - 0.5)*(pass_total_comm$Afternoon - 0.5))
+
+# Eliminar las filas que IS_COMM es NaN o NA
+pass_total_comm <- na.omit(pass_total_comm)
+
+# Criterio de commuting:
+# Porcentajes de subidos entre el 40% y el 60% no se consideran a la hora de decidir 
+# un flujo mayoritario de subida o bajada, por tanto, no son indicativos de commuting
+pass_total_comm$Morning[pass_total_comm$Morning >= 0.4 & pass_total_comm$Morning < 0.6] <- 0
+pass_total_comm$Afternoon[pass_total_comm$Afternoon >= 0.4 & pass_total_comm$Afternoon < 0.6] <- 0
+
+# Eliminar las estaciones que no cumplan con el criterio anterior
+pass_total_comm$IS_COMM[pass_total_comm$Morning * pass_total_comm$Afternoon == 0] <- 0
+
+# Mantener las estaciones que cumplan el criterio y que se detecte commuting (IS_COMM = -1)
+pass_total_comm <- pass_total_comm[pass_total_comm$IS_COMM == -1,]
+
+# Determinar el tipo de commuting (residencial o laboral) para las estaciones
+pass_total_comm$COMM_TYPE = "LABORAL"
+
+pass_total_comm$COMM_TYPE[pass_total_comm$Morning - pass_total_comm$Afternoon > 0] <- "RESIDENCIAL"
+
+# Eliminar la columna IS_COMM que ya no aporta informacion
+pass_total_comm <- pass_total_comm[,-c(5)]
+
+# Añadir la info geografica de las estaciones
+pass_total_comm <- pass_total_comm %>% left_join(ests_rod_df, by=c('CODIGO_ESTACION'='CÓDIGO'))
+pass_total_comm <- na.omit(pass_total_comm)
+
+# Escritura del csv para exportar los datos a Flourish, y pintar el mapa
+write.csv(pass_total_comm,"clean_data/ests_commuting_geo.csv", row.names = FALSE)
+
+```
+
+#### 2.3.3 Visualización de la evolución del flujo de pasajeros en algunas de las estaciones  
+
+A continuación se muestra la evolución de los flujos de entrada y salida de pasajeros en cuatro de las estaciones en las que se ha detectado que hay flujo de *commuting*. Las estaciones seleccionadas son:  
+
+- Barcelona Sants  
+- Gelida  
+- Cerdanyola Universitat  
+- Premià de Mar  
+
+
+``` {r message=FALSE, warning=FALSE}
+
+## EVOLUCION DEL FLUJO DIARIO IN/OUT EN ALGUNAS DE LAS ESTACIONES SEGUN GRAFICO ANTERIOR
+# Estaciones elegidas (4):
+# 71801 - BCN Sants
+# 72208 - Gelida
+# 72503 - Cerdanyola Universitat
+# 79409 - Premià de Mar
+
+comm_ests <- c("71801","72208","72503","79409")
+comm_rod_df <- pass_df[pass_df$CODIGO_ESTACION %in% comm_ests,c(1:5)]
+
+# Cambio de nombre de los atributos "VIAJEROS_SUBIDOS" Y "VIAJEROS BAJADOS" por sencillez
+colnames(comm_rod_df)[4] <- "SUBIDOS"
+colnames(comm_rod_df)[5] <- "BAJADOS"
+
+# Cambio de formato del dataframe para pintar las gráficas
+comm_rod_df <- comm_rod_df %>% 
+  pivot_longer(cols = SUBIDOS:BAJADOS, 
+               names_to = "FLUJO",
+               values_to = "VIAJEROS")
+
+# Normalizacion de los valores del total de viajeros para tener alturas similares
+comm_rod_df$VIAJEROS_NORM <- 0
+
+max_71801 <- max(comm_rod_df$VIAJEROS[comm_rod_df$CODIGO_ESTACION=="71801"])
+max_72208 <- max(comm_rod_df$VIAJEROS[comm_rod_df$CODIGO_ESTACION=="72208"])
+max_72503 <- max(comm_rod_df$VIAJEROS[comm_rod_df$CODIGO_ESTACION=="72503"])
+max_79409 <- max(comm_rod_df$VIAJEROS[comm_rod_df$CODIGO_ESTACION=="79409"])
+
+comm_rod_df$VIAJEROS_NORM[comm_rod_df$CODIGO_ESTACION == "71801"] <- 
+  comm_rod_df$VIAJEROS[comm_rod_df$CODIGO_ESTACION == "71801"] / max_71801
+comm_rod_df$VIAJEROS_NORM[comm_rod_df$CODIGO_ESTACION == "72208"] <- 
+  comm_rod_df$VIAJEROS[comm_rod_df$CODIGO_ESTACION == "72208"] / max_72208
+comm_rod_df$VIAJEROS_NORM[comm_rod_df$CODIGO_ESTACION == "72503"] <- 
+  comm_rod_df$VIAJEROS[comm_rod_df$CODIGO_ESTACION == "72503"] / max_72503
+comm_rod_df$VIAJEROS_NORM[comm_rod_df$CODIGO_ESTACION == "79409"] <- 
+  comm_rod_df$VIAJEROS[comm_rod_df$CODIGO_ESTACION == "79409"] / max_79409
+
+
+# Plot facet-wrap con las cuatro estaciones seleccionadas:
+ggplot(comm_rod_df, aes(x=TRAMO_HORARIO, y=VIAJEROS_NORM, color=FLUJO)) + geom_line() +
+  labs(title = "Flujo medio diario de viajeros (normalizado) por tramo horario",
+       subtitle = "Estaciones seleccionadas. Año 2018",
+       x = NULL, y = NULL) +
+  theme(axis.line.x = element_line(linewidth = 0.5, colour = "black", linetype = 1),
+        axis.line.y = element_blank(), axis.ticks.y = element_blank(), axis.text.y = element_blank(),
+        plot.background = element_blank(), panel.background = element_blank(),
+        legend.title = element_blank(), legend.box.background = element_blank(),
+        strip.background = element_rect(colour="#babacc", fill="white"),
+        strip.text = element_text(color = "#6c6c93")) +
+  scale_x_datetime(date_labels = "%H:%M", date_breaks='6 hours') +
+  scale_color_manual(values=c("#e60073","#0099ff")) +
+  facet_wrap(~NOMBRE_ESTACION)
+
+
+```
+
+**OBSERVACIONES DE LAS GRÁFICAS**  
+Antes de comentar las observaciones derivadas de las gráficas obtenidas, conviene recordar que la granularidad de los datos originales no permiten distinguir entre días laborables y fines de semana y festivos. De todas maneras, el hecho de que haya más días laborables que festivos permite inferir una mayor influencia de los primeros en la forma de las gráficas.  
+
+Las cuatro gráficas están normalizadas para facilitar la visualización de la evolución de los flujos independientemente del volumen de viajeros en cada estación, de tal manera que el valor máximo de cada una de ellas es igual a 1.  
+
+En las gráficas se observa que:  
+
+- Las estaciones de Gelida y Premià de Mar presentan un comportamiento claro de *commuting residencial* con un pico de viajeros subidos por la mañana y un pico de viajeros bajados por la tarde.  
+- La estación de Cerdanyola Universitat, que da servicio a la Universitat Autònoma de Barcelona, presenta un comportamiento típico de *commuting laboral* con un pico muy marcado de viajeros bajados por la mañana con apenas viajeros que suben, y un flujo continuo de viajeros que suben a partir de las 10h de la mañana y durante todo el día. Destaca un segundo pico de viajeros bajados hacia las 15h, que se supone que corresponde a los estudiantes de los turnos de tarde que llegan a la universidad a esta hora.  
+- La estación de Barcelona Sants presenta un comportamiento de *commuting laboral* aunque la diferencia entre viajeros subidos y bajados en la franja de la tarde es pequeña y con picos parejos.

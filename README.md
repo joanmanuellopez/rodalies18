@@ -3,8 +3,6 @@
 ## Contexto del proyecto
 Proyecto en lenguaje R, se trata de un análisis exploratorio para estudiar los flujos de viajeros en la red de Rodalies de Barcelona en el año 2018 a partir de los datos abiertos publicados en la web de Renfe. A partir de los resultados obtenidos me surgió la idea de desarrollar un método para detectar las estaciones de la red que presentan tendencias claras de flujos de commuting, tanto residencial como laboral.
 
-El treball inclòs en aquest projecte inclou, bàsicament, el procés de neteja i adequació de les dades amb llenguatge R per tal de crear les visualitzacions desitjades amb l’eina Flourish. [Enllaç al projecte](https://public.flourish.studio/story/1789298/)
-
 ### Retos
 
 El mayor reto que plantea este dataset es la falta de granularidad, ya que solo se facilitan las medias anuales de pasajeros por tramos de 30 minutos. 

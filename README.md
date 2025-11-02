@@ -16,16 +16,15 @@ El conjunto de datos utilizado es el **Volumen de Viajeros por Franja Horaria (B
 
 ## Conclusiones principales
 
-* Estaciones con mayor flujo de viajeros (subidos y bajados).
-* Evolución de los accesos a la red durante la jornada.
-* Estaciones de commuting.
+El análisis llevado a cabo en este proyecto ha permitido conocer:  
+
+* Cuáles son las estaciones con mayor flujo de viajeros (subidos y bajados) en la red de Rodalies. Se observa que básicamente son las ubicadas en la ciudad de Barcelona.
+* Cómo es la evolución de los accesos a la red durante la jornada. Se observa el pico de la hora punta de la mañana entre las 7h y las 8h, y el de la tarde entre las 17h y las 19h.
+* Algunos ejemplos de estaciones con flujos de commuting residencial o laboral. El hecho de que los datos solo proporcionen las medias anuales, distorsionan las observaciones, que hubieran sido más precisas de haber podido coger tan solo los datos correspondientes a los días laborables.
 
 ## Descripción de los ficheros
 
 Se incluye el fichero RMD que se usa para generar el informe en HTML, así como los conjuntos de datos originales en formato CSV publicados en el portal de datos abiertos de renfe operadora.
 
-**file1.Rmd**
-Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.
-
-**data1.csv**
-Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.
+**rodalies18_pf.Rmd**  
+Análisis exploratorio de los datos, en el que se comprueba la distribución de viajeros subidos y bajados en la red, así como cuáles son las estaciones con mayor flujo de viajeros (subidos y bajados). A continuación se explora la evolución horaria del número de pasajeros que acceden a la red en el conjunto global de las estaciones, estableciéndose las horas punta de la mañana y de la tarde. Finalmente, a partir de la obtención de las horas punta, se propone un método para la detección de flujos típicos de commuting laboral o residencial en las estaciones de la red.

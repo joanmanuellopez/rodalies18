@@ -5,11 +5,11 @@ Proyecto en lenguaje R, se trata de un análisis exploratorio para estudiar los 
 
 ### Retos
 
-El mayor reto que plantea este dataset es la falta de granularidad, ya que solo se facilitan las medias anuales de pasajeros por tramos de 30 minutos. 
+El mayor reto que plantea este dataset es la falta de granularidad, ya que solo se facilitan las medias anuales de pasajeros por tramos de 30 minutos. Esta limitación en los datos impide analizar con más detalle ciertos aspectos: 
 
-* Días de la semana (laborables vs festivos)
-* Meses del año (verano vs invierno)
-* No se puede estableceer una matriz origen-destino
+* *Días de la semana*. Diferencias en los flujos entre laborables vs festivos.
+* *Meses del año*. Diferencias en los flujos en los meses de verano respecto el resto del año.
+* Al ofrecer las entradas y salidas de viajeros por separado, no se permite establecer una matriz origen-destino de manera directa.
 
 ### Fuentes de datos
 El conjunto de datos utilizado es el **Volumen de Viajeros por Franja Horaria (Barcelona)** disponible en el portal [Renfe Data](https://data.renfe.com/dataset/volumen-de-viajeros-por-franja-horaria-barcelona) con información del año 2018, la más actual de las publicadas (última revisión del portal, septiembre de 2025).
